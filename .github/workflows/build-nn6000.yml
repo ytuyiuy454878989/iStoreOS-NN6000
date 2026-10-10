@@ -309,3 +309,5 @@ jobs:
             - **iStoreOS 分支**: ${{ env.ISTOREOS_BRANCH }}
             - **iStoreOS 提交**: ${{ steps.info.outputs.commit_hash }} (${{ steps.info.outputs.commit_date }})
             - **编译日期**: ${{ steps.info.outputs.build_date }}
+            - **插件**:
+            - **$(grep -oP "luci-app(-[a-zA-Z0-9]{1,}){1,}" ./firmware/*.manifest | awk -F":" '{print $NF}')
