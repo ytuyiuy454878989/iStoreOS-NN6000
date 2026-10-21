@@ -34,7 +34,6 @@ jobs:
       ISTOREOS_BRANCH: ${{ github.event.inputs.istoreos_ref }}
       CCACHE_DIR: ${{ github.workspace }}/istoreos/.ccache
       CCACHE_MAXSIZE: 1G
-
     steps:
       - name: Checkout port repository
         uses: actions/checkout@v6.0.2
@@ -161,11 +160,9 @@ jobs:
           echo "stamp=$STAMP" >> "$GITHUB_OUTPUT"
           echo "tag=rel-${{ github.event.inputs.device }}-${STAMP}" >> "$GITHUB_OUTPUT"
           echo "human=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')" >> "$GITHUB_OUTPUT"
-
           SRC="istoreos/bin/targets/qualcommax/ipq60xx"
           DST="release-artifacts"
           mkdir -p "$DST"
-
           # Only the devices enabled for this build pass exist in $SRC, so
           # collect every link_nn6000 image plus the target manifest.
           for f in "$SRC"/*link_nn6000-*.bin "$SRC"/*link_nn6000-*.itb "$SRC"/*qualcommax-ipq60xx*.manifest; do
@@ -173,6 +170,45 @@ jobs:
             cp "$f" "$DST/${STAMP}-$(basename "$f")"
           done
           ls -lh "$DST"
+
+      - name: Generate plugin list from .config
+        if: success() && inputs.publish_release
+        working-directory: ${{ github.workspace }}/istoreos
+        run: |
+          set -o pipefail
+          # 提取内置=y的软件包，如需只看luci插件，把下一行注释，启用下面luci那行
+          grep '^CONFIG_PACKAGE_' .config | grep '=y$' \
+            | sed -e 's/^CONFIG_PACKAGE_//' -e 's/=y$//' \
+            | sort \
+            | sed 's/^/- /' > $GITHUB_WORKSPACE/plugin-list.md
+          # 仅提取 luci-app 面板插件（取消下面注释，注释上面一行即可切换）
+          # grep '^CONFIG_PACKAGE_luci-app-' .config | grep '=y$' \
+          #   | sed -e 's/^CONFIG_PACKAGE_//' -e 's/=y$//' \
+          #   | sort \
+          #   | sed 's/^/- /' > $GITHUB_WORKSPACE/plugin-list.md
+
+      - name: Build release body markdown
+        if: success() && inputs.publish_release
+        run: |
+          cat > $GITHUB_WORKSPACE/release-body.md <<EOF
+## iStoreOS ${{ github.event.inputs.device }} Firmware
+- **目标设备**: ${{ github.event.inputs.device }}
+- **平台**: qualcommax/ipq60xx (ipq6000)
+- **iStoreOS 分支**: ${{ env.ISTOREOS_BRANCH }}
+- **iStoreOS 提交**: ${{ steps.info.outputs.commit_hash }} (${{ steps.info.outputs.commit_date }})
+- **内核版本**: ${{ steps.info.outputs.kernel_version }}
+- **编译日期**: ${{ steps.info.outputs.build_date }}
+
+### ✅ 内置插件列表
+> 下列为本次固件编译选中内置的软件包（=y）
+$(cat $GITHUB_WORKSPACE/plugin-list.md)
+
+### ⚠️ 注意事项
+1. 刷机前请备份原有配置；
+2. 同机型小版本升级一般可保留配置，跨大版本升级建议清空配置；
+3. 固件包含WiFi版 / 无WiFi版，请按需下载；
+4. 清单自动从 .config 生成，包含依赖包；如需仅展示luci面板插件，请切换上方脚本注释。
+EOF
 
       - name: Publish release
         if: success() && inputs.publish_release
@@ -184,12 +220,4 @@ jobs:
             release-artifacts/*.bin
             release-artifacts/*.itb
             release-artifacts/*.manifest
-          body: |
-            ## iStoreOS ${{ github.event.inputs.device }} Firmware
-
-            - **目标设备**: ${{ github.event.inputs.device }}
-            - **平台**: qualcommax/ipq60xx (ipq6000)
-            - **iStoreOS 分支**: ${{ env.ISTOREOS_BRANCH }}
-            - **iStoreOS 提交**: ${{ steps.info.outputs.commit_hash }} (${{ steps.info.outputs.commit_date }})
-            - **内核版本**: ${{ steps.info.outputs.kernel_version }}
-            - **编译日期**: ${{ steps.info.outputs.build_date }}
+          body_path: ${{ github.workspace }}/release-body.md
