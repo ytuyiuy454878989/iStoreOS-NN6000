@@ -174,21 +174,37 @@ jobs:
           done
           ls -lh "$DST"
 
+      - name: Extract luci plugins from manifest
+        id: plugins
+        if: success() && inputs.publish_release
+        run: |
+          set -o pipefail
+          MANIFEST=$(ls release-artifacts/*.manifest | head -n1)
+          if [ -f "$MANIFEST" ]; then
+            PLUGINS=$(grep -oP "luci-app(-[a-zA-Z0-9]{1,}){1,}" "$MANIFEST" | awk -F: '{print $NF}' | sort -u | tr '\n' '、')
+            PLUGINS=${PLUGINS%、}
+          else
+            PLUGINS="未读取到插件清单"
+          fi
+          echo "plugins=${PLUGINS}" >> "$GITHUB_OUTPUT"
+
       - name: Publish release
         if: success() && inputs.publish_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ts.outputs.tag }}
-          name: iStoreOS LINK_NN6000 Firmware ${{ steps.ts.outputs.human }}
+          name: iStoreOS ${{ github.event.inputs.device }} Firmware ${{ steps.ts.outputs.human }}
           files: |
             release-artifacts/*.bin
+            release-artifacts/*.itb
             release-artifacts/*.manifest
           body: |
-            ## iStoreOS LINK_NN6000 Firmware
-
-            - **目标设备**: LINK_NN6000
+            ## iStoreOS ${{ github.event.inputs.device }} Firmware
+            - **目标设备**: ${{ github.event.inputs.device }}
             - **平台**: qualcommax/ipq60xx (ipq6000)
             - **iStoreOS 分支**: ${{ env.ISTOREOS_BRANCH }}
             - **iStoreOS 提交**: ${{ steps.info.outputs.commit_hash }} (${{ steps.info.outputs.commit_date }})
             - **内核版本**: ${{ steps.info.outputs.kernel_version }}
-            - **编译日期**: ${{ steps.ts.outputs.human }}
+            - **编译日期**: ${{ steps.info.outputs.build_date }}
+            - **插   件**: ${{ steps.plugins.outputs.plugins }}
+
